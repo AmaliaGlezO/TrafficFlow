@@ -1,0 +1,14 @@
+services:
+  urbanpulse:
+    image: jupyter/pyspark-notebook:latest
+    container_name: urbanpulse
+    ports:
+      - "8888:8888"    
+      - "4040:4040"    
+      - "8080:8080"    
+      - "9870:9870"    
+    volumes:
+      - ./:/home/jovyan/work  
+    environment:
+      - JUPYTER_TOKEN=urbanpulse2024
+    working_dir: /home/jovyan/work
