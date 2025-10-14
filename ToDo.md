@@ -25,104 +25,184 @@
 ```
 
 
+# **Propuesta de Trabajo - Primera Entrega: Análisis de Movilidad Urbana con Big Data**
 
-## ✅ DIEGO 
+## **Filosofía de Trabajo en Equipo para Big Data**
 
-### **Hadoop funcionando**
-**¿Pa qué?**
-- Demuestra capacidad de almacenar y procesar **Grandes Volúmenes de Datos** (requisito principal del curso)
-- Sin HDFS, no podríamos justificar el uso de tecnologías distribuidas para 4.3M registros
-- **Valor para el proyecto:** Es la base que diferencia un análisis convencional de uno con Big Data real
-
-### **Spark sobre YARN**
-**¿Qué aporta al resultado final?**
-- Permite procesamiento distribuido y paralelo del dataset completo
-- Sin esto, el análisis de 745MB sería lento y no escalable
-- **Valor para el proyecto:** Demostramos que podemos manejar datasets que exceden la capacidad de una sola máquina
-
-### **Hive operativo**
-**¿Cómo enriquece el análisis?**
-- Permite consultas SQL complejas sobre datos en HDFS
-- Facilita el análisis para personas con background SQL (incluyendo la profesora)
-- **Valor para el proyecto:** Mostramos versatilidad - podemos usar tanto programación (Spark) como consultas declarativas (Hive)
-
-### **3 consultas Hive ejecutándose**
-**Impacto en los resultados:**
-1. **Consulta de tráfico por región:** Identifica patrones geográficos
-2. **Consulta de horas pico:** Revela comportamiento temporal
-3. **Top carreteras:** Prioriza análisis en vías críticas
-- **Valor para el proyecto:** Transforma datos crudos en insights accionables
-
-### **Tablas particionadas creadas**
-**Ventaja demostrable:**
-- Consultas 10x más rápidas cuando se filtran por región/fecha
-- Optimización profesional que muestra dominio técnico
-- **Valor para el proyecto:** No solo funciona, sino que está optimizado para producción
-
-### **Documentación técnica lista**
-**¿Por qué importa?**
-- La profesora puede verificar la arquitectura sin ejecutar código
-- Demuestra profesionalismo y capacidad de comunicar soluciones técnicas
-- **Valor para el proyecto:** Transparencia y reproducibilidad del trabajo
+### **Principios Fundamentales:**
+- **Trabajo paralelo e independiente** - Evitar dependencias críticas
+- **Modularidad** - Cada componente funciona por separado
+- **Arquitectura escalable** - Preparado para crecimiento de datos
+- **Documentación continua** - Cada avance queda registrado
 
 ---
 
-## ✅ AMALIA 
+## **📋 DIVISIÓN DE TAREAS PARALELAS**
 
-### **Dataset explorado y documentado**
-**Fundamento del análisis:**
-- Sin entender los datos, cualquier análisis es especulativo
-- La documentación justifica decisiones de limpieza y transformación
-- **Valor para el proyecto:** Análisis basado en comprensión profunda, no en suposiciones
+### **🔹 MÓDULO 1: INFRAESTRUCTURA Y DATOS**
 
-### **Subset limpio en HDFS**
-**Estrategia inteligente:**
-- Permite desarrollo ágil sin esperar procesamiento completo
-- Demuestra planificación y metodología profesional
-- **Valor para el proyecto:** Mostramos que sabemos iterar - prototipo rápido → solución completa
+#### **Tarea 1.1 - Configuración HDFS**
+```bash
+# Objetivo: Cluster HDFS operativo
+- [ ] Instalar y configurar HDFS en modo pseudo-distribuido
+- [ ] Crear estructura de directorios: /datasets/traffic/raw, /processed, /results
+- [ ] Verificar replicación y permisos
+- [ ] Documentar comandos básicos de operación
+```
+**Justificación Big Data:** HDFS permite distribuir el almacenamiento del dataset completo (1M+ registros)
 
-### **3 scripts Spark funcionando**
-**Capacidades demostradas:**
-1. **Limpieza:** Calidad de datos asegurada
-2. **Transformación:** Datos listos para análisis
-3. **Análisis:** Insights extraídos automáticamente
-- **Valor para el proyecto:** Automatización y reproducibilidad del análisis
+#### **Tarea 1.2 - Ingestion Inicial de Datos**
+```python
+# Objetivo: Dataset disponible en HDFS
+- [ ] Descargar subset inicial (100K registros) de Road Traffic Dataset
+- [ ] Cargar a HDFS: /datasets/traffic/raw/initial_subset.csv
+- [ ] Validar integridad: checksum y muestreo aleatorio
+- [ ] Crear script automatizado para carga incremental
+```
+**Justificación Movilidad Urbana:** Garantiza disponibilidad de datos históricos para análisis de patrones
 
-### **Análisis básico completado**
-**Cimientos para insights complejos:**
-- Estadísticas descriptivas: entendemos la distribución de los datos
-- Identificación de outliers y patrones iniciales
-- **Valor para el proyecto:** Sin esto, cualquier modelo predictivo sería poco confiable
-
-### **Transformaciones aplicadas**
-**Preparación para valor real:**
-- Datos geoespaciales listos para mapas de calor
-- Agregaciones temporales preparadas para series de tiempo
-- **Valor para el proyecto:** Los datos están en formato consumible para visualización y ML
-
-### **Resultados exportados a HDFS**
-**Demostración tangible:**
-- La profesora puede ver archivos de resultados reales
-- Evidencia concreta de procesamiento exitoso
-- **Valor para el proyecto:** No solo código que corre, sino resultados almacenados y accesibles
-
-### **Documentación de análisis lista**
-**Comunicación del valor:**
-- Explica QUÉ descubrimos y POR QUÉ importa
-- Conecta hallazgos técnicos con impacto en movilidad urbana
-- **Valor para el proyecto:** La profesora entiende el significado detrás de los números
+#### **Tarea 1.3 - Configuración Spark**
+```bash
+# Objetivo: Entorno Spark listo para procesamiento
+- [ ] Instalar PySpark y configurar variables de entorno
+- [ ] Probar conexión Spark-HDFS
+- [ ] Crear template de script Spark para reutilización
+- [ ] Establecer métricas de monitorización básica
+```
 
 ---
 
+### **🔹 MÓDULO 2: ANÁLISIS EXPLORATORIO**
 
-## 🎯 VALOR GLOBAL DEMOSTRADO
+#### **Tarea 2.1 - Análisis de Calidad de Datos**
+```python
+# Objetivo: Reporte completo de calidad de datos
+- [ ] Script para estadísticas descriptivas: count, nulls, duplicados
+- [ ] Análisis de distribuciones: velocidades, volúmenes vehiculares
+- [ ] Detección de outliers y valores anómalos en coordenadas GPS
+- [ ] Reporte automático en HTML/PDF
+```
+**Justificación Big Data:** Análisis scalable que funciona igual con 100K o 1M registros
 
-### **Para la Evaluación:**
-- **70% técnico:** Hadoop/Spark/Hive funcionando con datos reales
-- **30% analítico:** Insights concretos sobre movilidad urbana
-- **100% profesional:** Documentación, coordinación, entregables tangibles
+#### **Tarea 2.2 - Transformaciones Geoespaciales**
+```python
+# Objetivo: Datos GPS convertidos a análisis espacial
+- [ ] Conversión coordenadas → segmentos viales (geohash o grid)
+- [ ] Cálculo distancias entre puntos consecutivos
+- [ ] Identificación de corredores viales principales
+- [ ] Exportar datos transformados a /datasets/traffic/processed/
+```
+**Justificación Movilidad Urbana:** Base para mapas de calor y análisis de flujos
 
-### **Diferencial vs otros equipos:**
-- No solo "instalamos Hadoop", sino que extraemos valor real de los datos
-- Metodología reproducible y escalable
-- Comunicación efectiva entre componentes técnicos y analíticos
+#### **Tarea 2.3 - Análisis Temporal Básico**
+```python
+# Objetivo: Patrones horarios y semanales identificados
+- [ ] Agregaciones por hora del día, día de semana
+- [ ] Identificación de horas pico automática
+- [ ] Cálculo de velocidades promedio por franjas horarias
+- [ ] Visualizaciones estáticas básicas (matplotlib)
+```
+
+---
+
+### **🔹 MÓDULO 3: PROCESAMIENTO Y MODELADO**
+
+#### **Tarea 3.1 - Pipeline de Limpieza Spark**
+```python
+# Objetivo: Script robusto de limpieza y transformación
+- [ ] Función para manejo de valores nulos (imputación estratégica)
+- [ ] Filtrado de registros inconsistentes (velocidades imposibles)
+- [ ] Normalización de formatos temporales
+- [ ] Optimización de particiones para performance
+```
+**Justificación Big Data:** Procesamiento distribuido que escala linealmente con volumen
+
+#### **Tarea 3.2 - Feature Engineering**
+```python
+# Objetivo: Variables para modelos predictivos
+- [ ] Creación de features temporales (hora_pico, fin_de_semana)
+- [ ] Features espaciales (densidad_vehicular_zonas)
+- [ ] Variables derivadas (nivel_congestion, fluidez)
+- [ ] Exportar dataset de features listo para ML
+```
+
+---
+
+### **🔹 MÓDULO 4: VISUALIZACIÓN Y REPORTE**
+
+#### **Tarea 4.1 - Visualizaciones Estáticas**
+```python
+# Objetivo: Primeras visualizaciones demostrables
+- [ ] Mapa de calor estático de congestionamientos
+- [ ] Gráficos de series temporales de volumen vehicular
+- [ ] Diagramas de caja para velocidades por horario
+- [ ] Matrices de correlación entre variables
+```
+**Justificación Movilidad Urbana:** Comunicación efectiva de hallazgos para toma de decisiones
+
+#### **Tarea 4.2 - Dashboard Básico**
+```python
+# Objetivo: Interfaz simple para explorar resultados
+- [ ] Streamlit o Panel dashboard con filtros básicos
+- [ ] Visualización de top 10 zonas críticas
+- [ ] Métricas clave de movilidad (velocidad promedio, volumen total)
+- [ ] Exportación de reportes automáticos
+```
+
+#### **Tarea 4.3 - Documentación Técnica**
+```markdown
+# Objetivo: Informe completo de primera entrega
+- [ ] Arquitectura del sistema y decisiones técnicas
+- [ ] Resultados del análisis exploratorio
+- [ ] Explicación de transformaciones aplicadas
+- [ ] Plan de escalamiento para fase 2
+```
+
+---
+
+## **🔄 FLUJO DE TRABAJO COORDINADO**
+
+```
+ HDFS + Datos → Entrega: Datos accesibles en /datasets/traffic/raw
+Calidad Datos → Entrega: Reporte calidad inicial
+```
+
+
+```
+Pipeline Limpieza → Entrega: Datos limpios en /processed
+Diego: Análisis Temporal → Entrega: Patrones horarios identificados
+```
+
+```
+Feature Engineering → Entrega: Dataset ML listo
+Visualizaciones → Entrega: Dashboard básico operativo
+```
+
+
+
+
+---
+
+## **🚀 VALOR AÑADIDO PARA BIG DATA Y MOVILIDAD URBANA**
+
+### **Para Big Data:**
+- **Arquitectura escalable probada** con subset representativo
+- **Metodología reproducible** para datasets masivos
+- **Performance benchmarking** establecido
+
+### **Para Movilidad Urbana:**
+- **Base sólida** para predicciones en tiempo real
+- **Identificación temprana** de patrones críticos
+- **Framework extensible** para nuevos análisis
+
+---
+
+## **🎯 CRITERIOS DE ÉXITO POR TAREA**
+
+Cada tarea debe cumplir:
+- **Autocontenida**: Funciona independientemente
+- **Documentada**: Explicación clara de metodología
+- **Escalable**: Diseñada para crecimiento de datos
+- **Reproducible**: Scripts ejecutables por cualquier miembro
+
+**¿Esta división de trabajo te parece viable? ¿Necesitas que ajuste alguna tarea específica o que profundice en los scripts iniciales para alguno de los módulos?**
