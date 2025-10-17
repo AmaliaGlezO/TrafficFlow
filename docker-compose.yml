@@ -1,14 +1,71 @@
+version: '3.8'
+
 services:
-  urbanpulse:
-    image: jupyter/pyspark-notebook:latest
-    container_name: urbanpulse
+  # Equivalente a "ray-head" - el coordinador
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: hadoop-master
     ports:
-      - "8888:8888"    
-      - "4040:4040"    
-      - "8080:8080"    
-      - "9870:9870"    
-    volumes:
-      - ./:/home/jovyan/work  
+      - "9870:9870"  # UI HDFS
+      - "9000:9000"  # Servicio HDFS
+      - "8088:8088"  # YARN UI
     environment:
-      - JUPYTER_TOKEN=urbanpulse2024
-    working_dir: /home/jovyan/work
+      - CLUSTER_NAME=traffic-cluster
+    networks:
+      - hadoop-network
+
+  # Equivalente a "ray-worker-1" - nodos de datos
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    hostname: datanode1
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-master:9000
+    networks:
+      - hadoop-network
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    hostname: datanode2
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-master:9000
+    networks:
+      - hadoop-network
+
+  # Equivalente a tu "ml-api" - procesamiento
+  spark-master:
+    image: bde2020/spark-master:3.0.0-hadoop3.2
+    container_name: spark-master
+    hostname: spark-master
+    depends_on:
+      - namenode
+    ports:
+      - "8080:8080"  # Spark UI
+      - "7077:7077"  # Spark Master
+    environment:
+      - SPARK_MODE=master
+    networks:
+      - hadoop-network
+
+  spark-worker:
+    image: bde2020/spark-worker:3.0.0-hadoop3.2
+    container_name: spark-worker
+    hostname: spark-worker
+    depends_on:
+      - namenode
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    networks:
+      - hadoop-network
+
+networks:
+  hadoop-network:
+    driver: bridge
