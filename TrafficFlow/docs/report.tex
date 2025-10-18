@@ -1,0 +1,89 @@
+\documentclass[11pt]{article}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{amssymb}
+\geometry{a4paper, margin=2.5cm}
+
+\title{TrafficFlow: Orquestación Distribuida de Conteos Vehiculares}
+\author{Equipo TrafficFlow}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Descripción del proyecto}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Objetivo}: Analizar en tiempo cercano al real los patrones de flujo vehicular para apoyar decisiones de planeación y monitoreo de tráfico en el Reino Unido.
+  \item \textbf{Enfoque}: Generar datos sintéticos distribuidos a partir del conteo histórico del Department for Transport (DfT), almacenarlos en HDFS y ejecutar procesos de limpieza y consultas analíticas sobre Spark.
+\end{itemize}
+
+\section{Dataset seleccionado}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Nombre}: Department for Transport (UK) Road Traffic Statistics -- Raw Count Data.\\
+  \textbf{Fuente}: \href{https://roadtraffic.dft.gov.uk/downloads}{DfT Open Data Portal}.\\
+  \textbf{Formato}: CSV separado por comas con más de 30 atributos numéricos y categóricos.
+\end{itemize}
+
+\subsection*{Justificación}
+\paragraph{Volumen} El dataset supera los 80 millones de registros históricos (\textasciitilde{}12~GB comprimido) lo que permite demostrar características de ``Grandes Volúmenes'' al almacenarlo en HDFS y al entrenar el productor para sintetizar 1500 filas por minuto de forma sostenida.
+\paragraph{Características} Contiene identificadores de región, autoridad local y carretera, mediciones por hora de múltiples categorías vehiculares y atributos geoespaciales (latitud/longitud). La granularidad temporal y de clases vehiculares facilita construir casos de uso analíticos.
+\paragraph{Pertinencia} Los objetivos del proyecto requieren medir demanda y composición vehicular para detectar cuellos de botella, priorizar infraestructura y estimar emisiones. Este dataset es dominio-específico y ofrece series históricas suficientes para calibrar simulaciones realistas.
+
+\section{Arquitectura propuesta}
+\begin{center}
+\begin{tikzpicture}[node distance=3.2cm, font=\small, >=stealth, auto]
+  \tikzstyle{component}=[draw, rounded corners, align=center, minimum width=3.6cm, minimum height=1.3cm]
+  \node[component] (raw) {CSV Original\\(DfT Raw Counts)};
+  \node[component, right of=raw] (hdfsraw) {HDFS Raw Zone\\(\texttt{/data/raw})};
+  \node[component, below of=hdfsraw] (producer) {Spark Structured\\Streaming Producer};
+  \node[component, right of=hdfsraw] (bronze) {Bronze Synthetic\\Parquet (Streaming)};
+  \node[component, right of=bronze] (clean) {Spark Batch\\Cleaning Job};
+  \node[component, right of=clean] (silver) {Silver Curated\\Parquet};
+  \node[component, below of=silver] (queries) {Spark SQL\\Analytical Queries};
+
+  \draw[->] (raw) -- node[above]{Carga inicial} (hdfsraw);
+  \draw[->] (hdfsraw) -- node[right]{Plantilla} (producer);
+  \draw[->] (producer) -- node[above]{1500 filas/min} (bronze);
+  \draw[->] (bronze) -- node[above]{Batch ETL} (clean);
+  \draw[->] (clean) -- node[above]{Datos limpios} (silver);
+  \draw[->] (silver) -- node[right]{Consultas} (queries);
+\end{tikzpicture}
+\end{center}
+
+\paragraph{Componentes}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{CSV Original}: Subconjunto local del dataset DfT utilizado como verdad base.
+  \item \textbf{HDFS Raw Zone}: Almacenamiento distribuido sobre Hadoop que preserva los datos originales sin transformación.
+  \item \textbf{Streaming Producer}: Job de PySpark en YARN que samplea el histórico y genera tráfico sintético con ruido gaussiano controlado (25 filas/s \approx 1500 filas/min).
+  \item \textbf{Bronze Synthetic}: Zona de aterrizaje en Parquet donde se acumulan los micro-lotes generados.
+  \item \textbf{Cleaning Job}: Proceso batch en Spark que deduplica, valida atributos numéricos y crea métricas derivadas.
+  \item \textbf{Silver Curated}: Datos limpios particionados por fecha listos para consultas analíticas.
+  \item \textbf{Analytical Queries}: Scripts PySpark/Spark SQL para validar calidad y obtener indicadores clave (picos horarios, participación de carga pesada, etc.).
+\end{itemize}
+
+\paragraph{Enfoque de procesamiento} Se adopta una combinación de streaming (generación continua) y batch (limpieza y agregaciones), todos orquestados sobre Hadoop YARN para asegurar escalabilidad horizontal.
+
+\section{Avances ejecutados}
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Infraestructura}: Docker Compose con NameNode, DataNode, ResourceManager, NodeManager, HistoryServer y clúster Spark (master/worker) totalmente funcional.\checkmark
+  \item \textbf{Carga en HDFS}: Datos crudos disponibles en \texttt{/data/raw} mediante comandos \texttt{hdfs dfs -put}.\checkmark
+  \item \textbf{Procesos de limpieza}: Script \texttt{data\_cleaning.py} para depurar zona bronze y generar silver particionada.\checkmark
+  \item \textbf{Consultas iniciales}: Script \texttt{exploratory\_queries.py} que ejecuta agregaciones y rankings sobre los datos curados.\checkmark
+  \item \textbf{Productor distribuido}: Job \texttt{distributed\_producer.py} que mantiene el ritmo de 1500 filas/minuto con checkpoints tolerantes a fallos en HDFS.\checkmark
+\end{enumerate}
+
+\section{Próximos pasos sugeridos}
+\begin{itemize}[leftmargin=*]
+  \item Integrar un repositorio de métricas (Prometheus/Grafana) para monitorear latencia y throughput del productor.
+  \item Automatizar la orquestación con Airflow o Oozie para calendarizar limpieza y consultas.
+  \item Evaluar modelos predictivos de congestión usando Spark MLlib sobre la capa silver.
+\end{itemize}
+
+\end{document}

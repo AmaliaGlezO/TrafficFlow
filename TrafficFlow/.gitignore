@@ -1,1 +1,5 @@
-Data/
+data/raw/*
+!data/raw/.gitkeep
+data/checkpoints/*
+!data/checkpoints/.gitkeep
+__pycache__/
