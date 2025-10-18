@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tablero de Tráfico en Tiempo Real</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha512-o5p3pFmw3v4eCwC7R2AGlOB0fOkH1ZZ1xdjQbaO5jM90+hCbGyF/F7kh/3Gzdh0dX8GZFODdgNpTiFzLJLRV3g=="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <h1>Flujo Vehicular</h1>
+        <div class="indicadores">
+          <div>
+            <span class="titulo">Eventos activos</span>
+            <span id="contador-eventos" class="valor">0</span>
+          </div>
+          <div>
+            <span class="titulo">Velocidad media</span>
+            <span id="velocidad-media" class="valor">0 km/h</span>
+          </div>
+          <div>
+            <span class="titulo">Congestión dominante</span>
+            <span id="congestion-dominante" class="valor">-</span>
+          </div>
+        </div>
+        <div class="tabla-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Sensor</th>
+                <th>Receptor</th>
+                <th>Autoridad</th>
+                <th>Congestión</th>
+                <th>Velocidad</th>
+                <th>Vehículos</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-eventos"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="mapa">
+        <div id="map"></div>
+      </section>
+    </main>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha512-Cv89G4Z0eKCbFf8gLuwZQzQ0jrISFRCGDpa2BkLomqKgJo0vvArkH5QWckHQwZ0pniS3pSkeFcn2rkGQ5xX0lw=="
+      crossorigin=""
+    ></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

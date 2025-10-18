@@ -1,0 +1,443 @@
+# Redes y volúmenes
+networks:
+  trafico-red:
+    driver: bridge
+
+volumes:
+  hadoop-namenode:
+  hadoop-datanode1:
+  hadoop-datanode2:
+  hadoop-datanode3:
+  hadoop-history:
+  zeppelin-notebooks:
+  zeppelin-logs:
+
+x-hadoop-base: &hadoop_base
+  build:
+    context: .
+    dockerfile: infra/hadoop/Dockerfile
+  restart: unless-stopped
+  networks:
+    - trafico-red
+
+x-generador-env: &generador_env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_TOPIC: trafico.eventos
+  KAFKA_TOPICO_TELEMETRIA: trafico.telemetria
+  EVENTOS_POR_MINUTO: 150
+  TAMANO_LOTE_EVENTOS: 120
+  RESPALDO_STDOUT: "false"
+  DIRECTORIO_DATOS: /app/datos/referencia
+  INTERVALO_LATIDO_SEGUNDOS: 20
+
+x-generador-base: &generador_base
+  build:
+    context: .
+    dockerfile: services/data_generator/Dockerfile
+  restart: unless-stopped
+  environment: *generador_env
+  depends_on:
+    kafka:
+      condition: service_healthy
+  networks:
+    - trafico-red
+
+x-receptor-env: &receptor_env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_TOPIC_ENTRADA: trafico.eventos
+  KAFKA_TOPIC_DETALLE: trafico.detalle
+  KAFKA_TOPIC_DASHBOARD: trafico.dashboard
+  KAFKA_TOPICO_TELEMETRIA: trafico.telemetria
+  KAFKA_GRUPO_CONSUMO: trafico.receptores
+  INTERVALO_LATIDO_SEGUNDOS: 20
+  INTERVALO_COMMIT: 200
+
+x-receptor-base: &receptor_base
+  build:
+    context: .
+    dockerfile: services/receiver/Dockerfile
+  restart: unless-stopped
+  environment: *receptor_env
+  depends_on:
+    kafka:
+      condition: service_healthy
+  networks:
+    - trafico-red
+
+services:
+  # Hadoop HDFS / YARN
+  namenode:
+    <<: *hadoop_base
+    container_name: namenode
+    hostname: namenode
+    environment:
+      HADOOP_ROLE: namenode
+    ports:
+      - "9870:9870"  # HDFS web UI
+      - "9000:9000"  # RPC HDFS
+    volumes:
+      - hadoop-namenode:/hadoop/dfs/name
+
+  datanode1:
+    <<: *hadoop_base
+    container_name: datanode1
+    environment:
+      HADOOP_ROLE: datanode
+    volumes:
+      - hadoop-datanode1:/hadoop/dfs/data
+    depends_on:
+      - namenode
+
+  datanode2:
+    <<: *hadoop_base
+    container_name: datanode2
+    environment:
+      HADOOP_ROLE: datanode
+    volumes:
+      - hadoop-datanode2:/hadoop/dfs/data
+    depends_on:
+      - namenode
+
+  datanode3:
+    <<: *hadoop_base
+    container_name: datanode3
+    environment:
+      HADOOP_ROLE: datanode
+    volumes:
+      - hadoop-datanode3:/hadoop/dfs/data
+    depends_on:
+      - namenode
+
+  resourcemanager:
+    <<: *hadoop_base
+    container_name: resourcemanager
+    environment:
+      HADOOP_ROLE: resourcemanager
+    depends_on:
+      - namenode
+      - datanode1
+      - datanode2
+      - datanode3
+
+  nodemanager:
+    <<: *hadoop_base
+    container_name: nodemanager
+    environment:
+      HADOOP_ROLE: nodemanager
+    depends_on:
+      - resourcemanager
+
+  historyserver:
+    <<: *hadoop_base
+    container_name: historyserver
+    environment:
+      HADOOP_ROLE: historyserver
+    volumes:
+      - hadoop-history:/hadoop/yarn/timeline
+    depends_on:
+      - namenode
+      - resourcemanager
+
+  # Kafka + Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.4
+    container_name: zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "2181:2181"
+    networks:
+      - trafico-red
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.4
+    container_name: kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 --request-timeout-ms 2000 >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - trafico-red
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.4
+    container_name: kafka-init
+    command: >-
+      bash -c "
+        set -e; \
+        for TOPICO in trafico.eventos trafico.detalle trafico.dashboard trafico.telemetria; do \
+          kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+            --topic $$TOPICO --partitions 6 --replication-factor 1; \
+        done; \
+        for TOPICO in trafico.eventos trafico.detalle; do \
+          kafka-configs --bootstrap-server kafka:9092 --alter --entity-type topics \
+            --entity-name $$TOPICO --add-config retention.ms=86400000; \
+        done; \
+        sleep 1
+      "
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - trafico-red
+
+  # Spark cluster (master + workers)
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: spark-master
+    environment:
+      SPARK_MASTER_HOST: spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    networks:
+      - trafico-red
+
+  spark-worker1:
+    image: apache/spark:3.5.1
+    container_name: spark-worker1
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 1
+    depends_on:
+      - spark-master
+    networks:
+      - trafico-red
+
+  spark-worker2:
+    image: apache/spark:3.5.1
+    container_name: spark-worker2
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 1
+    depends_on:
+      - spark-master
+    networks:
+      - trafico-red
+
+  spark-worker3:
+    image: apache/spark:3.5.1
+    container_name: spark-worker3
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 1
+    depends_on:
+      - spark-master
+    networks:
+      - trafico-red
+
+  # Streaming app (Spark Structured Streaming consumer)
+  streaming:
+    build:
+      context: .
+      dockerfile: services/streaming/Dockerfile
+    container_name: spark-streaming
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=trafico.detalle
+      - HDFS_URI=hdfs://namenode:9000
+      - HDFS_BRONCE_PATH=/data/bronze/trafico
+      - HDFS_PLATA_PATH=/data/plata/trafico
+      - STREAM_CHECKPOINT_PATH=/tmp/streaming/checkpoints
+      - STREAM_OUTPUT_MODE=append
+    depends_on:
+      - spark-master
+      - kafka
+    networks:
+      - trafico-red
+
+  # Zeppelin for notebooks/visualization
+  zeppelin:
+    image: apache/zeppelin:0.11.2
+    container_name: zeppelin
+    restart: unless-stopped
+    environment:
+      - ZEPPELIN_ADDR=0.0.0.0
+      - ZEPPELIN_PORT=8081
+      - ZEPPELIN_NOTEBOOK_DIR=/zeppelin/notebook
+    ports:
+      - "8081:8081"
+    volumes:
+      - zeppelin-notebooks:/zeppelin/notebook
+      - zeppelin-logs:/zeppelin/logs
+    depends_on:
+      - spark-master
+    networks:
+      - trafico-red
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: dashboard
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC_DASHBOARD=trafico.dashboard
+      - KAFKA_GROUP_DASHBOARD=dashboard-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - trafico-red
+
+  control-center:
+    build:
+      context: .
+      dockerfile: services/control_center/Dockerfile
+    container_name: control-center
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPICO_TELEMETRIA=trafico.telemetria
+      - KAFKA_GRUPO_TELEMETRIA=control-center
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - trafico-red
+
+  receptor-01:
+    <<: *receptor_base
+    container_name: receptor-01
+    environment:
+      <<: *receptor_env
+      RECEPTOR_ID: receptor-01
+
+  receptor-02:
+    <<: *receptor_base
+    container_name: receptor-02
+    environment:
+      <<: *receptor_env
+      RECEPTOR_ID: receptor-02
+
+  receptor-03:
+    <<: *receptor_base
+    container_name: receptor-03
+    environment:
+      <<: *receptor_env
+      RECEPTOR_ID: receptor-03
+
+  receptor-04:
+    <<: *receptor_base
+    container_name: receptor-04
+    environment:
+      <<: *receptor_env
+      RECEPTOR_ID: receptor-04
+
+  receptor-05:
+    <<: *receptor_base
+    container_name: receptor-05
+    environment:
+      <<: *receptor_env
+      RECEPTOR_ID: receptor-05
+
+  # 10 data generator containers (use the generator base)
+  generador-01:
+    <<: *generador_base
+    container_name: generador-01
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-01
+
+  generador-02:
+    <<: *generador_base
+    container_name: generador-02
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-02
+
+  generador-03:
+    <<: *generador_base
+    container_name: generador-03
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-03
+
+  generador-04:
+    <<: *generador_base
+    container_name: generador-04
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-04
+
+  generador-05:
+    <<: *generador_base
+    container_name: generador-05
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-05
+
+  generador-06:
+    <<: *generador_base
+    container_name: generador-06
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-06
+
+  generador-07:
+    <<: *generador_base
+    container_name: generador-07
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-07
+
+  generador-08:
+    <<: *generador_base
+    container_name: generador-08
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-08
+
+  generador-09:
+    <<: *generador_base
+    container_name: generador-09
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-09
+
+  generador-10:
+    <<: *generador_base
+    container_name: generador-10
+    environment:
+      <<: *generador_env
+      IDENTIFICADOR_SENSOR: generador-10
+
