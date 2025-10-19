@@ -1,83 +1,110 @@
-"""Initial analytical queries over the curated traffic dataset."""
+"""Initial analytical queries over the cleaned silver dataset."""
 from __future__ import annotations
 
 import argparse
-import logging
-import sys
-from typing import List
+from typing import Tuple
 
-from pyspark.sql import SparkSession
-from pyspark.sql.window import Window
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-LOGGER = logging.getLogger("trafficflow.queries")
 
-
-def parse_args(argv: List[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Exploratory analytics on TrafficFlow silver data",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run basic analytical queries over the cleaned traffic dataset")
+    parser.add_argument("--input-path", required=True, help="HDFS path to the cleaned (silver) dataset")
+    parser.add_argument(
+        "--output-path",
+        help="Optional HDFS path to store the aggregated KPIs (Parquet)",
     )
-    parser.add_argument("--input-path", required=True, help="Input Parquet path in HDFS (silver zone)")
     parser.add_argument(
         "--top-n",
         type=int,
         default=10,
-        help="Number of rows to display for ranking queries",
+        help="Number of top regions/authorities to display",
     )
-    return parser.parse_args(argv)
+    return parser.parse_args()
 
 
-def main(argv: List[str]) -> int:
-    args = parse_args(argv)
+def get_spark() -> SparkSession:
+    return SparkSession.builder.appName("TfExploratoryQueries").getOrCreate()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 
-    spark = SparkSession.builder.appName("TrafficFlowExploratoryQueries").getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
-
-    LOGGER.info("Reading curated dataset from %s", args.input_path)
-    df = spark.read.parquet(args.input_path)
-    df.createOrReplaceTempView("traffic")
-
-    LOGGER.info("Daily totals by road type")
-    daily_by_road = (
-        df.groupBy("event_date", "road_type")
-        .agg(F.sum("total_motor_traffic").alias("vehicles"))
-        .orderBy(F.desc("event_date"), F.desc("vehicles"))
-    )
-    daily_by_road.show(args.top_n, truncate=False)
-
-    LOGGER.info("Top regions by heavy goods share")
-    hgvs_share = (
+def aggregate_by_region(df: DataFrame, top_n: int) -> Tuple[DataFrame, DataFrame]:
+    by_region = (
         df.groupBy("region_name")
         .agg(
-            F.avg("heavy_goods_share").alias("avg_hgvs_share"),
-            F.sum("total_motor_traffic").alias("total_flow"),
+            F.sum("all_motor_vehicles").alias("total_vehicles"),
+            F.avg("vehicles_per_km").alias("avg_density"),
         )
-        .filter("total_flow > 0")
-        .orderBy(F.desc("avg_hgvs_share"))
+        .orderBy(F.desc("total_vehicles"))
     )
-    hgvs_share.show(args.top_n, truncate=False)
+    year_region = (
+        df.groupBy("region_name", "year")
+        .agg(F.sum("all_motor_vehicles").alias("total_vehicles"))
+        .orderBy("region_name", "year")
+    )
+    return by_region.limit(top_n), year_region
 
-    LOGGER.info("Peak hour demand by local authority")
-    windowed = (
-        df.groupBy("local_authority_name", "event_hour")
-        .agg(F.sum("total_motor_traffic").alias("vehicles"))
-        .withColumn(
-            "rank",
-            F.dense_rank().over(
-                Window.partitionBy("local_authority_name").orderBy(F.desc("vehicles"))
-            ),
+
+def aggregate_by_authority(df: DataFrame, top_n: int) -> DataFrame:
+    return (
+        df.groupBy("local_authority_id", "local_authority_name")
+        .agg(
+            F.sum("all_motor_vehicles").alias("total_vehicles"),
+            F.avg("vehicles_per_km").alias("avg_density"),
         )
-        .filter(F.col("rank") == 1)
-        .orderBy(F.desc("vehicles"))
+        .orderBy(F.desc("total_vehicles"))
+        .limit(top_n)
     )
-    windowed.select("local_authority_name", "event_hour", "vehicles").show(args.top_n, truncate=False)
 
-    LOGGER.info("Exploratory queries completed")
-    return 0
+
+def aggregate_by_road_type(df: DataFrame) -> DataFrame:
+    return (
+        df.groupBy("road_type")
+        .agg(
+            F.sum("all_motor_vehicles").alias("total_vehicles"),
+            F.avg("vehicles_per_km").alias("avg_density"),
+            F.avg("heavy_vehicle_share").alias("avg_heavy_share"),
+        )
+        .orderBy(F.desc("total_vehicles"))
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    spark = get_spark()
+
+    df = spark.read.parquet(args.input_path)
+
+    region_top, region_by_year = aggregate_by_region(df, args.top_n)
+    authority_top = aggregate_by_authority(df, args.top_n)
+    road_type_stats = aggregate_by_road_type(df)
+
+    print("=== Top regiones por vehículos ===")
+    region_top.show(truncate=False)
+
+    print("=== Distribución anual por región ===")
+    region_by_year.show(100, truncate=False)
+
+    print("=== Top autoridades locales ===")
+    authority_top.show(truncate=False)
+
+    print("=== Estadísticas por tipo de carretera ===")
+    road_type_stats.show(truncate=False)
+
+    if args.output_path:
+        (region_top
+         .coalesce(1)
+         .write.mode("overwrite")
+         .parquet(args.output_path.rstrip("/") + "/region_top"))
+        (authority_top
+         .coalesce(1)
+         .write.mode("overwrite")
+         .parquet(args.output_path.rstrip("/") + "/authority_top"))
+        (road_type_stats
+         .coalesce(1)
+         .write.mode("overwrite")
+         .parquet(args.output_path.rstrip("/") + "/road_type_stats"))
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    main()
